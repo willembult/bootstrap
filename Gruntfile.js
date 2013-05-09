@@ -9,12 +9,14 @@ module.exports = function(grunt) {
   grunt.loadNpmTasks('grunt-contrib-uglify');
   grunt.loadNpmTasks('grunt-html2js');
   grunt.loadNpmTasks('grunt-karma');
+  grunt.loadNpmTasks('grunt-bump');
 
   // Project configuration.
   grunt.initConfig({
     ngversion: '1.0.5',
     bsversion: '2.3.1',
     modules: [],//to be filled in by build task
+    pkgFile: 'package.json',
     pkg: grunt.file.readJSON('package.json'),
     dist: 'dist',
     filename: 'ui-bootstrap',
@@ -22,7 +24,14 @@ module.exports = function(grunt) {
     meta: {
       modules: 'angular.module("ui.bootstrap", [<%= srcModules %>]);',
       tplmodules: 'angular.module("ui.bootstrap.tpls", [<%= tplModules %>]);',
-      all: 'angular.module("ui.bootstrap", ["ui.bootstrap.tpls", <%= srcModules %>]);'
+      all: 'angular.module("ui.bootstrap", ["ui.bootstrap.tpls", <%= srcModules %>]);',
+      banner: 
+        '/*\n' +
+        ' * <%= pkg.name %> - v<%= pkg.version %> - <%= grunt.template.today("yyyy-mm-dd") %>\n' +
+        ' * <%= pkg.homepage %>\n' +
+        ' * Copyright (c) <%= grunt.template.today("yyyy") %>\n' +
+        ' * Licensed under <%= pkg.license %>\n' +
+        ' */\n'
     },
     delta: {
       html: {
@@ -38,21 +47,21 @@ module.exports = function(grunt) {
     concat: {
       dist: {
         options: {
-          banner: '<%= meta.modules %>\n'
+          banner: '<%=meta.banner%>\n\n<%= meta.modules %>\n'
         },
         src: [], //src filled in by build task
         dest: '<%= dist %>/<%= filename %>-<%= pkg.version %>.js'
       },
       dist_tpls: {
         options: {
-          banner: '<%= meta.all %>\n<%= meta.tplmodules %>\n'
+          banner: '<%=meta.banner%>\n\n<%= meta.all %>\n<%= meta.tplmodules %>\n'
         },
         src: [], //src filled in by build task
         dest: '<%= dist %>/<%= filename %>-tpls-<%= pkg.version %>.js'
       }
     },
     copy: {
-      demohtml: {
+      demo_html: {
         options: {
           //process html files with gruntfile config
           processContent: grunt.template.process
@@ -64,7 +73,7 @@ module.exports = function(grunt) {
           dest: "dist/"
         }]
       },
-      demoassets: {
+      demo_assets: {
         files: [{
           expand: true,
           //Don't re-copy html files, we process those
@@ -72,6 +81,12 @@ module.exports = function(grunt) {
           cwd: "misc/demo",
           dest: "dist/"
         }]
+      },
+      release: {
+        files: {
+          'ui-bootstrap.js': '<%= concat.dist.dest %>',
+          'ui-bootstrap-tpls.js': '<%= concat.dist_tpls.dest %>'
+        }
       }
     },
     uglify: {
@@ -132,7 +147,7 @@ module.exports = function(grunt) {
   //register before and after test tasks so we've don't have to change cli 
   //options on the goole's CI server
   grunt.registerTask('before-test', ['jshint', 'html2js']);
-  grunt.registerTask('after-test', ['build', 'copy']);
+  grunt.registerTask('after-test', ['build', 'copy:demo_assets', 'copy:demo_html']);
 
   //Rename our watch task to 'delta', then make actual 'watch'
   //task build things, then start test server
@@ -259,6 +274,41 @@ module.exports = function(grunt) {
     grunt.task.run(process.env.TRAVIS ? 'karma:travis' : 'karma:continuous');
   });
 
+  grunt.registerTask('release', 'Bump version, update demo, update built files, update bower, push to master', function() {
+    var sh = require('shelljs');
+    var type = this.args[0] || 'patch';
+    var oldVersion = grunt.config('pkg').version;
+
+    grunt.log.writeln('Releasing ' + type + ' of version ' + oldVersion.cyan + '...');
+
+    //We use exec instead of grunt.task.run because we don't
+    //know when grunt.task.run will actually run
+    sh.exec('grunt bump:' + type, {silent:true});
+    var newVersion = grunt.file.readJSON(grunt.config('pkgFile')).version;
+    grunt.log.writeln('Bumped version from ' + oldVersion.cyan + ' to ' + newVersion.cyan + '.');
+
+    sh.exec('grunt before-test after-test', {silent:true});
+    grunt.log.writeln('Generated build files for ' + newVersion.cyan + '.');
+
+    sh.exec('grunt copy:release', {silent:true});
+    grunt.log.writeln('Copied release files for ' + newVersion.cyan + ' to project root.');
+
+    sh.exec('grunt changelog:' + oldVersion, {silent:true});
+    grunt.log.writeln('Generated changelog from ' + oldVersion.cyan + ' to ' + 'HEAD'.cyan + '.');
+
+    var commitMessage = '"chore(release): v' + newVersion + '"';
+    sh.exec('git add ./*.js');
+    sh.exec('git commit CHANGELOG.md package.json ./*.js -m ' + commitMessage, {silent:true});
+    grunt.log.writeln('Generated commit ' + commitMessage.cyan + '.');
+
+    sh.exec('git tag ' + newVersion);
+    grunt.log.writeln('Generated tag ' + ('"' + newVersion + '"').cyan +'.');
+
+    var remote = 'ajoslin', tree = 'grunt-release';
+    sh.exec('git push -f ' + remote + ' ' + tree + ' --tags', {silent:true});
+    grunt.log.writeln('\nRelease ' + newVersion.cyan + ' pushed with tags.');
+  });
+
   //changelog generation
   grunt.registerTask('changelog', 'generates changelog markdown from git commits', function () {
 
@@ -299,6 +349,10 @@ module.exports = function(grunt) {
           var subject = lines.shift();
 
           var msgMatches = subject.match(COMMIT_MSG_REGEXP);
+          //Does not match commit message conventions
+          if (!msgMatches) {
+            return; 
+          }
           var changeType = msgMatches[1];
           var component = msgMatches[2];
           var componentMsg = msgMatches[3];
@@ -313,11 +367,13 @@ module.exports = function(grunt) {
           addChange(changeType, component, {sha1:sha1, msg:componentMsg});
         });
 
-        console.log(grunt.template.process(grunt.file.read('misc/changelog.tpl.md'), {data: {
+        var output = grunt.template.process(grunt.file.read('misc/changelog.tpl.md'), {data: {
           changelog: changelog,
           today: grunt.template.today('yyyy-mm-dd'),
           version : grunt.config('pkg.version')
-        }}));
+        }});
+
+        grunt.file.write("CHANGELOG.md", output + grunt.file.read("CHANGELOG.md"));
 
         done();
       }
