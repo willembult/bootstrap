@@ -1,65 +1,65 @@
-describe('Given ui.bootstrap.dialog', function(){
+ddescribe('Given ui.bootstrap.dialog', function(){
 
-	var $document, $compile, $scope, $rootScope, $dialog, q, provider;
-	var template = '<div>I\'m a template</div> ';
+  var $document, $compile, $q, $rootScope, $scope;
+  var $dialogProvider, $dialog, dialog;
+  var template = '<div>I\'m a template</div> ';
 
-	beforeEach(module('ui.bootstrap.dialog'));
-	beforeEach(module('template/dialog/message.html'));
+  var createDialog = function(opts){
+    dialog = $dialog.dialog(opts);
+  };
 
-	beforeEach(function(){
-		module(function($dialogProvider){
-			provider = $dialogProvider;
-		});
-		inject(function(_$document_, _$compile_, _$rootScope_, _$dialog_, _$q_){
-			$document = _$document_;
-			$compile = _$compile_;
-			$scope = _$rootScope_.$new();
-			$rootScope = _$rootScope_;
-			$dialog = _$dialog_;
-			q = _$q_;
-		});
-	});
+  var openDialog = function(templateUrl, controller){
+    dialog.open(templateUrl, controller);
+    $scope.$apply();
+  };
 
-	// clean-up after ourselves
-	afterEach(function(){
-		closeDialog();
-		clearGlobalOptions();
-	});
+  var closeDialog = function(result){
+    if(dialog){
+      dialog.close(result);
+      $rootScope.$apply();
+    }
+  };
 
-	it('provider service should be injected', function(){
-		expect(provider).toBeDefined();
-	});
+  beforeEach(function () {
+    this.addMatchers({
+      toBeOpen: function() {
+        this.message = function() {
+          return "Expected '" + angular.mock.dump(this.actual) + "' to be open.";
+        };
 
-	it('dialog service should be injected', function(){
-		expect($dialog).toBeDefined();
-	});
+        var backdropDisplayed = $document.find('body > div.modal-backdrop').css('display') === 'block';
+        var modalDisplayed = $document.find('body > div.modal').css('display') === 'block';
+        return backdropDisplayed && modalDisplayed && this.actual.isOpen();
+      },
+      toBeClosed: function() {
+        this.message = function() {
+          return "Expected '" + angular.mock.dump(this.actual) + "' to be closed.";
+        };
 
-	var dialog;
+        var backdropNotDisplayed = $document.find('body > div.modal-backdrop').length === 0;
+        var modalNotDisplayed = $document.find('body > div.modal').length === 0;
+        return backdropNotDisplayed && modalNotDisplayed && !this.actual.isOpen();
+      }
+    });
+  });
 
-	var createDialog = function(opts){
-		dialog = $dialog.dialog(opts);
-	};
+  beforeEach(module('ui.bootstrap.dialog'));
+  beforeEach(module('template/dialog/message.html'));
+  beforeEach(module(function (_$dialogProvider_) {
+    $dialogProvider = _$dialogProvider_;
+  }));
+  beforeEach(inject(function (_$document_, _$compile_, _$rootScope_, _$dialog_, _$q_) {
+      $document = _$document_;
+      $compile = _$compile_;
+      $scope = _$rootScope_.$new();
+      $rootScope = _$rootScope_;
+      $dialog = _$dialog_;
+      $q = _$q_;
+  }));
 
-	var openDialog = function(templateUrl, controller){
-		dialog.open(templateUrl, controller);
-		$scope.$apply();
-	};
-
-	var closeDialog = function(result){
-		if(dialog){
-			dialog.close(result);
-			$rootScope.$apply();
-		}
-	};
-
-	var setGlobalOptions = function(opts){
-		provider.options(opts);
-	};
-
-	var clearGlobalOptions = function(){
-		provider.options({});
-	};
-	
+  afterEach(function () {
+    closeDialog();
+  });
 
 	var dialogShouldBeClosed = function(){
 		it('should not include a backdrop in the DOM', function(){
@@ -91,13 +91,13 @@ describe('Given ui.bootstrap.dialog', function(){
 
 	describe('Given global option', function(){
 
-		var useDialogWithGlobalOption = function(opts){
-			beforeEach(function(){
-				setGlobalOptions(opts);
-				createDialog({template:template});
-				openDialog();
-			});
-		};
+    var useDialogWithGlobalOption = function (opts) {
+      beforeEach(function () {
+        $dialogProvider.options(opts);
+        createDialog({template: template});
+        openDialog();
+      });
+    };
 
 		describe('backdrop:false', function(){
 			useDialogWithGlobalOption({backdrop: false});
@@ -123,18 +123,6 @@ describe('Given ui.bootstrap.dialog', function(){
 			});
 		});
 
-		/*
-		describe('dialogFade:true, backdropFade:true', function(){
-			useDialogWithGlobalOption({dialogFade:true, backdropFade:true});
-
-			it('backdrop class should be changed', function(){
-				expect($document.find('body > div.modal.fade').length).toBe(1);
-			});
-
-			it('the modal should be change', function(){
-				expect($document.find('body > div.modal-backdrop.fade').length).toBe(1);
-			});
-		});*/
 	});
 
 	describe('Opening a dialog', function(){
@@ -175,7 +163,7 @@ describe('Given ui.bootstrap.dialog', function(){
 		}
 
 		beforeEach(function(){
-			deferred = q.defer();
+			deferred = $q.defer();
 			resolveObj = {
 				foo: function(){return 'foo';},
 				bar: function(){return deferred.promise;}
@@ -289,23 +277,6 @@ describe('Given ui.bootstrap.dialog', function(){
 		});
 	});
 
-  describe('When dialog is open and location changes', function () {
-
-    var changeLocation = function () {
-      $rootScope.$apply(function(){
-        $rootScope.$broadcast('$locationChangeSuccess');
-      });
-    };
-
-    beforeEach(function () {
-      createDialog({template: template});
-      openDialog();
-      changeLocation();
-    });
-
-    dialogShouldBeClosed();
-  });
-
 	describe('when opening it with a template containing white-space', function(){
 
 		var controllerIsCreated;
@@ -323,4 +294,30 @@ describe('Given ui.bootstrap.dialog', function(){
 
 		dialogShouldBeOpen();
 	});
+
+  describe('Dialog and location changes', function () {
+
+    var changeLocation = function () {
+      $rootScope.$apply(function(){
+        $rootScope.$broadcast('$locationChangeSuccess');
+      });
+    };
+
+    beforeEach(function () {
+      createDialog({template: template});
+      openDialog();
+    });
+
+    it('should close opened dialog after location change', function () {
+      changeLocation();
+      expect(dialog).toBeClosed();
+    });
+
+    it('should allow opening dialogs after closing them upon location change', function () {
+      changeLocation();
+      openDialog();
+      expect(dialog).toBeOpen();
+    });
+  });
+
 });

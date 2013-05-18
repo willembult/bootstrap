@@ -1,17 +1,19 @@
-// The `$dialogProvider` can be used to configure global defaults for your
-// `$dialog` service.
-var dialogModule = angular.module('ui.bootstrap.dialog', ['ui.bootstrap.transition']);
+angular.module('ui.bootstrap.dialog', ['ui.bootstrap.transition'])
 
-dialogModule.controller('MessageBoxController', ['$scope', 'dialog', 'model', function($scope, dialog, model){
-  $scope.title = model.title;
-  $scope.message = model.message;
-  $scope.buttons = model.buttons;
-  $scope.close = function(res){
-    dialog.close(res);
-  };
-}]);
+  .controller('MessageBoxController', ['$scope', 'dialog', 'model', function ($scope, dialog, model) {
+    $scope.title = model.title;
+    $scope.message = model.message;
+    $scope.buttons = model.buttons;
+    $scope.close = function (res) {
+      dialog.close(res);
+    };
+  }])
 
-dialogModule.provider("$dialog", function(){
+/**
+ * The `$dialogProvider` can be used to configure global defaults for your
+ * `$dialog` service.
+ */
+.provider("$dialog", function(){
 
   // The default options for all dialogs.
   var defaults = {
