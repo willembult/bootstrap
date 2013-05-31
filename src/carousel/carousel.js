@@ -19,7 +19,7 @@ angular.module('ui.bootstrap.carousel', ['ui.bootstrap.transition'])
 
   /* direction: "prev" or "next" */
   self.select = function(nextSlide, direction) {
-    var nextIndex = slides.indexOf(nextSlide);
+    var nextIndex = jQuery.inArray(nextSlide, slides);
     //Decide direction if it's not given
     if (direction === undefined) {
       direction = nextIndex > currentIndex ? "next" : "prev";
@@ -38,8 +38,9 @@ angular.module('ui.bootstrap.carousel', ['ui.bootstrap.transition'])
       if (self.currentSlide && angular.isString(direction) && !$scope.noTransition && nextSlide.$element) { 
         //We shouldn't do class manip in here, but it's the same weird thing bootstrap does. need to fix sometime
         nextSlide.$element.addClass(direction);
-        nextSlide.$element[0].offsetWidth = nextSlide.$element[0].offsetWidth; //force reflow
-
+        if (!$.browser.msie) { // offsetWidth not settable in IE
+          nextSlide.$element[0].offsetWidth = nextSlide.$element[0].offsetWidth; //force reflow
+        }
         //Set all other slides to stop doing their stuff for the new transition
         angular.forEach(slides, function(slide) {
           angular.extend(slide, {direction: '', entering: false, leaving: false, active: false});
@@ -72,7 +73,7 @@ angular.module('ui.bootstrap.carousel', ['ui.bootstrap.transition'])
 
   /* Allow outside people to call indexOf on slides array */
   self.indexOfSlide = function(slide) {
-    return slides.indexOf(slide);
+    return jQuery.inArray(slide, slides);
   };
 
   $scope.next = function() {
@@ -152,7 +153,7 @@ angular.module('ui.bootstrap.carousel', ['ui.bootstrap.transition'])
 
   self.removeSlide = function(slide) {
     //get the index of the slide inside the carousel
-    var index = slides.indexOf(slide);
+    var index = jQuery.inArray(slide,slides);
     slides.splice(index, 1);
     if (slides.length > 0 && slide.active) {
       if (index >= slides.length) {
